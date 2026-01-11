@@ -8,84 +8,122 @@ namespace SecureNotes
     {
         private Label lblTitle = new Label();
         private Label lblContent = new Label();
-        private Label lblDate = new Label();
-        private Label lblType = new Label();
-        private Panel pnlColor = new Panel();
+        private Label lblMeta = new Label();
+
         private Button btnDelete = new Button();
+        private Button btnCopy = new Button();
+        private Button btnEdit = new Button();
 
         public int NoteId { get; private set; }
-        public event EventHandler<int> EditRequested;
+
         public event EventHandler<int> DeleteRequested;
+        public event EventHandler<int> EditRequested;
 
         public NoteCard()
         {
-            this.Size = new Size(280, 160);
-            this.BackColor = Color.White;
-            this.BorderStyle = BorderStyle.FixedSingle;
-            this.Margin = new Padding(8);
-            this.Cursor = Cursors.Hand;
-            this.Click += NoteCard_Click;
+            Size = new Size(300, 190);
+            Margin = new Padding(10);
+            BorderStyle = BorderStyle.FixedSingle;
 
-            pnlColor.Dock = DockStyle.Top;
-            pnlColor.Height = 6;
-            pnlColor.BackColor = Color.White;
-            pnlColor.Click += NoteCard_Click;
-
-            lblTitle.Location = new Point(10, 14);
-            lblTitle.Size = new Size(220, 20);
+            lblTitle.Location = new Point(10, 10);
+            lblTitle.Size = new Size(280, 20);
             lblTitle.Font = new Font("Segoe UI", 10F, FontStyle.Bold);
-            lblTitle.Click += NoteCard_Click;
 
-            lblType.Location = new Point(240, 16);
-            lblType.Font = new Font("Segoe UI", 8F);
-            lblType.Click += NoteCard_Click;
-
-            lblContent.Location = new Point(10, 40);
-            lblContent.Size = new Size(260, 60);
+            lblContent.Location = new Point(10, 36);
+            lblContent.Size = new Size(280, 84);
             lblContent.Font = new Font("Segoe UI", 9F);
-            lblContent.Click += NoteCard_Click;
 
-            lblDate.Location = new Point(10, 110);
-            lblDate.Font = new Font("Segoe UI", 8F);
-            lblDate.ForeColor = Color.Gray;
-            lblDate.Click += NoteCard_Click;
+            lblMeta.Location = new Point(10, 124);
+            lblMeta.Size = new Size(180, 20);
+            lblMeta.Font = new Font("Segoe UI", 8F);
+
+            btnEdit.Text = "Редагувати";
+            btnEdit.Location = new Point(10, 150);
+            btnEdit.Size = new Size(80, 26);
+            btnEdit.Click += (s, e) => EditRequested?.Invoke(this, NoteId);
+
+            btnCopy.Text = "Копіювати";
+            btnCopy.Location = new Point(100, 150);
+            btnCopy.Size = new Size(80, 26);
+            btnCopy.Click += BtnCopy_Click;
 
             btnDelete.Text = "Видалити";
-            btnDelete.Location = new Point(200, 106);
-            btnDelete.Size = new Size(70, 24);
-            btnDelete.Click += btnDelete_Click;
+            btnDelete.Location = new Point(190, 150);
+            btnDelete.Size = new Size(80, 26);
+            btnDelete.Click += (s, e) => DeleteRequested?.Invoke(this, NoteId);
 
-            this.Controls.Add(pnlColor);
-            this.Controls.Add(lblTitle);
-            this.Controls.Add(lblType);
-            this.Controls.Add(lblContent);
-            this.Controls.Add(lblDate);
-            this.Controls.Add(btnDelete);
+            Controls.AddRange(new Control[] { lblTitle, lblContent, lblMeta, btnEdit, btnCopy, btnDelete });
         }
 
-        public void Bind(Note note)
+        private void BtnCopy_Click(object sender, EventArgs e)
+        {
+            Program.TouchActivity();
+            var text = lblContent.Tag as string ?? lblContent.Text;
+            Clipboard.SetText(text ?? "");
+            var timer = new Timer { Interval = 15000 };
+            timer.Tick += (s, ev) =>
+            {
+                try { if (Clipboard.GetText() == text) Clipboard.Clear(); } catch { }
+                timer.Stop(); timer.Dispose();
+            };
+            timer.Start();
+        }
+
+        public void Bind(Note note, string decryptedIfPassword = null)
         {
             NoteId = note.Id;
+
+            // Фон картки = колір нотатки
+            Color bg;
+            try { bg = ColorTranslator.FromHtml(note.Color ?? "#FFFFFF"); }
+            catch { bg = Color.White; }
+            BackColor = bg;
+
+            // Авто-контраст тексту
+            var fg = GetContrastingColor(bg);
+            ForeColor = fg;
+            lblTitle.ForeColor = fg;
+            lblContent.ForeColor = fg;
+            lblMeta.ForeColor = fg == Color.Black ? Color.FromArgb(120, 0, 0, 0) : Color.FromArgb(200, 255, 255, 255);
+
             lblTitle.Text = note.Title;
-            lblContent.Text = string.IsNullOrWhiteSpace(note.Content) ? "(без змісту)" : note.Content;
-            lblDate.Text = note.CreatedAt.ToString("dd.MM.yyyy");
+            lblMeta.Text = note.Type == "password"
+                ? (note.GroupId.HasValue ? "Пароль • Спільна" : "Пароль")
+                : (note.GroupId.HasValue ? "Нотатка • Спільна" : "Нотатка");
 
-            lblType.Text = note.Type == "note" ? "Звичайна"
-                         : note.Type == "password" ? "Пароль"
-                         : note.Type == "shared" ? "Спільна" : note.Type;
-
-            try { pnlColor.BackColor = ColorTranslator.FromHtml(note.Color); }
-            catch { pnlColor.BackColor = Color.White; }
+            if (note.Type == "password")
+            {
+                if (decryptedIfPassword == null)
+                {
+                    lblContent.Text = "••••••••••";
+                    lblContent.Tag = null;
+                }
+                else
+                {
+                    lblContent.Text = decryptedIfPassword;
+                    lblContent.Tag = decryptedIfPassword;
+                }
+            }
+            else
+            {
+                lblContent.Text = string.IsNullOrWhiteSpace(note.Content) ? "(порожньо)" : note.Content;
+                lblContent.Tag = lblContent.Text;
+            }
         }
 
-        private void NoteCard_Click(object sender, EventArgs e)
+        public void ApplyTheme(Theme theme)
         {
-            EditRequested?.Invoke(this, NoteId);
+            // Фон залишається кольором нотатки; кнопки підлаштуємо
+            var buttonBg = theme == Theme.Dark ? Color.FromArgb(40, 44, 45) : SystemColors.Control;
+            btnEdit.BackColor = buttonBg;
+            btnCopy.BackColor = buttonBg;
+            btnDelete.BackColor = buttonBg;
         }
 
-        private void btnDelete_Click(object sender, EventArgs e)
+        private Color GetContrastingColor(Color bg)
         {
-            DeleteRequested?.Invoke(this, NoteId);
+            var yiq = ((bg.R * 299) + (bg.G * 587) + (bg.B * 114)) / 1000;
+            return yiq >= 128 ? Color.Black : Color.WhiteSmoke;
         }
     }
 }

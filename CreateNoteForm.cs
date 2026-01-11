@@ -1,192 +1,240 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Drawing;
+using System.Linq;
 using System.Windows.Forms;
 
 namespace SecureNotes
 {
     public class CreateNoteForm : Form
     {
-        public Note CreatedNote { get; private set; }
+        public Note CreatedOrUpdatedNote { get; private set; }
+        private Note EditingNote;
 
         private TextBox txtTitle;
         private TextBox txtContent;
         private RadioButton rbNote;
         private RadioButton rbPassword;
-        private RadioButton rbShared;
-        private Panel pnlShared;
-        private TextBox txtShared;
-        private FlowLayoutPanel pnlColors;
-        private Panel pnlSelectedColor;
-        private Label lblSelectedColor;
-        private Button btnCreate;
-        private Button btnCancel;
+        private ComboBox cmbColor;
+        private TextBox txtTags;
+        private CheckBox chkShared;
+        private ComboBox cmbGroup;
 
-        private string selectedType = "note";
-        private string selectedColor = "#FFD6E8";
-        private readonly string[] PALETTE = { "#FFD6E8", "#E6F3FF", "#E8F5E9", "#FFF4E6", "#F3E5F5", "#FFF9C4", "#FFFFFF" };
+        private readonly List<Group> _groups;
+        private readonly int? _preselectGroupId;
 
-        public CreateNoteForm(string defaultType = "note")
+        public CreateNoteForm(string defaultType, Note toEdit, List<Group> groups, int? preselectGroupId)
         {
-            Text = "Створити нотатку";
+            EditingNote = toEdit;
+            _groups = groups ?? new List<Group>();
+            _preselectGroupId = preselectGroupId;
+
+            Text = toEdit == null ? "Створити нотатку" : "Редагувати нотатку";
             StartPosition = FormStartPosition.CenterParent;
+            ClientSize = new Size(520, 560);
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = false;
-            ClientSize = new Size(560, 560);
 
-            BuildUI();
-            SetType(defaultType);
-            UpdateColorPreview();
-        }
+            var lblTitle = new Label { Text = "Заголовок", Location = new Point(16, 16) };
+            txtTitle = new TextBox { Location = new Point(16, 36), Width = 480 };
 
-        public void LoadForEdit(Note note)
-        {
-            Text = "Редагувати нотатку";
-            txtTitle.Text = note.Title;
-            txtContent.Text = note.Content;
-            SetType(note.Type);
-            selectedColor = string.IsNullOrWhiteSpace(note.Color) ? "#FFFFFF" : note.Color;
-            UpdateColorPreview();
+            var lblContent = new Label { Text = "Зміст", Location = new Point(16, 68) };
+            txtContent = new TextBox { Location = new Point(16, 88), Width = 480, Height = 180, Multiline = true, ScrollBars = ScrollBars.Vertical };
 
-            if (note.Type == "shared" && !string.IsNullOrWhiteSpace(note.SharedWith))
-                txtShared.Text = note.SharedWith;
+            var grpType = new GroupBox { Text = "Тип", Location = new Point(16, 274), Size = new Size(480, 50) };
+            rbNote = new RadioButton { Text = "Звичайна", Location = new Point(12, 22), Checked = (toEdit?.Type ?? defaultType) == "note" };
+            rbPassword = new RadioButton { Text = "Пароль", Location = new Point(120, 22), Checked = (toEdit?.Type ?? defaultType) == "password" };
+            grpType.Controls.AddRange(new Control[] { rbNote, rbPassword });
 
-            btnCreate.Text = "Зберегти";
-        }
+            var lblColor = new Label { Text = "Колір", Location = new Point(16, 330) };
+            cmbColor = new ComboBox { Location = new Point(16, 350), Width = 180, DropDownStyle = ComboBoxStyle.DropDownList };
+            cmbColor.Items.AddRange(new object[] { "#FFD6E8", "#E6F3FF", "#E8F5E9", "#FFF4E6", "#F3E5F5", "#FFF9C4", "#FFFFFF" });
+            cmbColor.SelectedIndex = 0;
 
-        private void BuildUI()
-        {
-            var lblHeader = new Label
+            var lblTags = new Label { Text = "Теги (через ;)", Location = new Point(216, 330) };
+            txtTags = new TextBox { Location = new Point(216, 350), Width = 280 };
+
+            chkShared = new CheckBox { Text = "Спільна нотатка", Location = new Point(16, 382), Width = 480 };
+            var lblGroup = new Label { Text = "Група", Location = new Point(16, 410) };
+            cmbGroup = new ComboBox { Location = new Point(16, 430), Width = 480, DropDownStyle = ComboBoxStyle.DropDownList, Enabled = false };
+
+            chkShared.CheckedChanged += (s, e) =>
             {
-                Text = "Створити нотатку",
-                Font = new Font("Segoe UI", 12F, FontStyle.Bold),
-                Location = new Point(16, 12),
-                Size = new Size(300, 28)
-            };
-            Controls.Add(lblHeader);
-
-            var lblTitle = new Label { Text = "Заголовок", Location = new Point(16, 52) };
-            txtTitle = new TextBox { Location = new Point(16, 70), Size = new Size(520, 23) };
-            Controls.Add(lblTitle);
-            Controls.Add(txtTitle);
-
-            var lblContent = new Label { Text = "Зміст", Location = new Point(16, 102) };
-            txtContent = new TextBox
-            {
-                Location = new Point(16, 120),
-                Multiline = true,
-                Size = new Size(520, 150),
-                ScrollBars = ScrollBars.Vertical
-            };
-            Controls.Add(lblContent);
-            Controls.Add(txtContent);
-
-            var grpType = new GroupBox { Text = "Тип нотатки", Location = new Point(16, 280), Size = new Size(520, 56) };
-            rbNote = new RadioButton { Text = "Звичайна", Location = new Point(12, 22), Checked = true };
-            rbPassword = new RadioButton { Text = "Пароль", Location = new Point(120, 22) };
-            rbShared = new RadioButton { Text = "Спільна", Location = new Point(210, 22) };
-            rbNote.CheckedChanged += (s, e) => { if (rbNote.Checked) SetType("note"); };
-            rbPassword.CheckedChanged += (s, e) => { if (rbPassword.Checked) SetType("password"); };
-            rbShared.CheckedChanged += (s, e) => { if (rbShared.Checked) SetType("shared"); };
-            grpType.Controls.Add(rbNote);
-            grpType.Controls.Add(rbPassword);
-            grpType.Controls.Add(rbShared);
-            Controls.Add(grpType);
-
-            var lblColors = new Label { Text = "Колір", Location = new Point(16, 344) };
-            pnlColors = new FlowLayoutPanel { Location = new Point(16, 364), Size = new Size(420, 48) };
-            Controls.Add(lblColors);
-            Controls.Add(pnlColors);
-
-            foreach (var hex in PALETTE)
-            {
-                var btn = new Button
+                cmbGroup.Enabled = chkShared.Checked;
+                if (chkShared.Checked)
                 {
-                    Width = 40,
-                    Height = 40,
-                    Margin = new Padding(6),
-                    BackColor = ColorTranslator.FromHtml(hex),
-                    FlatStyle = FlatStyle.Flat
-                };
-                btn.FlatAppearance.BorderColor = Color.Silver;
-                btn.Click += ColorButton_Click;
-                pnlColors.Controls.Add(btn);
-            }
+                    PopulateGroups();
+                    PreselectGroup();
+                }
+            };
 
-            pnlSelectedColor = new Panel { Location = new Point(448, 364), Size = new Size(88, 24), BackColor = ColorTranslator.FromHtml(selectedColor) };
-            lblSelectedColor = new Label { Text = $"Колір: {selectedColor}", Location = new Point(448, 392), Size = new Size(120, 20) };
-            Controls.Add(pnlSelectedColor);
-            Controls.Add(lblSelectedColor);
+            var btnCreate = new Button { Text = toEdit == null ? "Створити" : "Зберегти", Location = new Point(316, 490), Width = 180 };
+            btnCreate.Click += BtnCreate_Click;
 
-            pnlShared = new Panel { Location = new Point(16, 420), Size = new Size(520, 50), Visible = false };
-            var lblShared = new Label { Text = "Спільний доступ (через кому)", Location = new Point(0, 0) };
-            txtShared = new TextBox { Location = new Point(0, 20), Size = new Size(520, 23) };
-            pnlShared.Controls.Add(lblShared);
-            pnlShared.Controls.Add(txtShared);
-            Controls.Add(pnlShared);
+            Controls.AddRange(new Control[] { lblTitle, txtTitle, lblContent, txtContent, grpType, lblColor, cmbColor, lblTags, txtTags, chkShared, lblGroup, cmbGroup, btnCreate });
 
-            btnCreate = new Button { Text = "Створити", Location = new Point(16, 488), Size = new Size(120, 32) };
-            btnCancel = new Button { Text = "Скасувати", Location = new Point(144, 488), Size = new Size(120, 32) };
-            btnCreate.Click += btnCreate_Click;
-            btnCancel.Click += (s, e) => { DialogResult = DialogResult.Cancel; Close(); };
-            Controls.Add(btnCreate);
-            Controls.Add(btnCancel);
-        }
-
-        private void SetType(string type)
-        {
-            selectedType = type;
-            rbNote.Checked = type == "note";
-            rbPassword.Checked = type == "password";
-            rbShared.Checked = type == "shared";
-            pnlShared.Visible = selectedType == "shared";
-        }
-
-        private void UpdateColorPreview()
-        {
-            try
+            // Ініціалізація значень при редагуванні
+            if (toEdit != null)
             {
-                pnlSelectedColor.BackColor = ColorTranslator.FromHtml(selectedColor);
-                lblSelectedColor.Text = $"Колір: {selectedColor}";
+                txtTitle.Text = toEdit.Title;
+
+                if (toEdit.Type == "password")
+                {
+                    if (Program.SessionKey != null && toEdit.IsEncrypted)
+                    {
+                        try
+                        {
+                            txtContent.Text = CryptoService.DecryptAes(toEdit.IvBase64, toEdit.Content, Program.SessionKey);
+                        }
+                        catch
+                        {
+                            txtContent.Text = "(не вдалося розшифрувати) — введіть новий зміст";
+                        }
+                    }
+                    else
+                    {
+                        txtContent.Text = "•••••••••• (PIN не розблоковано) — введіть новий зміст";
+                    }
+                }
+                else
+                {
+                    txtContent.Text = toEdit.Content ?? "";
+                }
+
+                cmbColor.SelectedItem = toEdit.Color;
+                txtTags.Text = toEdit.Tags ?? "";
+
+                if (toEdit.GroupId.HasValue)
+                {
+                    chkShared.Checked = true;
+                    cmbGroup.Enabled = true;
+                    PopulateGroups();
+                    var idx = _groups.FindIndex(g => g.Id == toEdit.GroupId.Value);
+                    if (idx >= 0) cmbGroup.SelectedIndex = idx;
+                }
             }
-            catch
+            else
             {
-                pnlSelectedColor.BackColor = Color.White;
-                lblSelectedColor.Text = "Колір: #FFFFFF";
+                if (_preselectGroupId.HasValue)
+                {
+                    chkShared.Checked = true;
+                    cmbGroup.Enabled = true;
+                    PopulateGroups();
+                    PreselectGroup();
+                }
             }
         }
 
-        private void ColorButton_Click(object sender, EventArgs e)
+        private void PopulateGroups()
         {
-            if (sender is Button btn)
+            cmbGroup.Items.Clear();
+            foreach (var g in _groups) cmbGroup.Items.Add(g);
+            cmbGroup.DisplayMember = "Name";
+        }
+
+        private void PreselectGroup()
+        {
+            if (_preselectGroupId.HasValue)
             {
-                selectedColor = ColorTranslator.ToHtml(btn.BackColor);
-                UpdateColorPreview();
+                var idx = _groups.FindIndex(g => g.Id == _preselectGroupId.Value);
+                if (idx >= 0) cmbGroup.SelectedIndex = idx;
             }
         }
 
-        private void btnCreate_Click(object sender, EventArgs e)
+        private void BtnCreate_Click(object sender, EventArgs e)
         {
+            Program.TouchActivity();
+
             var title = txtTitle.Text.Trim();
             var content = txtContent.Text;
+            var type = rbPassword.Checked ? "password" : "note";
+            var color = cmbColor.SelectedItem?.ToString() ?? "#FFFFFF";
+            var tags = txtTags.Text?.Trim() ?? "";
 
             if (string.IsNullOrWhiteSpace(title))
             {
-                MessageBox.Show("Введіть заголовок.", "Помилка", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show("Введіть заголовок.");
                 return;
             }
 
-            CreatedNote = new Note
+            int? groupId = null;
+            if (chkShared.Checked)
             {
-                Title = title,
-                Content = content,
-                Type = selectedType,
-                Color = selectedColor,
-                SharedWith = selectedType == "shared" ? txtShared.Text.Trim() : null,
-                CreatedAt = DateTime.Now
-            };
+                if (cmbGroup.SelectedItem is Group g) groupId = g.Id;
+                else { MessageBox.Show("Оберіть групу для спільної нотатки."); return; }
+            }
 
-            DialogResult = DialogResult.OK;
-            Close();
+            if (EditingNote == null)
+            {
+                var note = new Note
+                {
+                    OwnerId = Program.CurrentUser.Id,
+                    Title = title,
+                    Type = type,
+                    Color = color,
+                    Tags = tags,
+                    GroupId = groupId,
+                    CreatedAt = DateTime.Now,
+                    UpdatedAt = DateTime.Now
+                };
+
+                if (type == "password")
+                {
+                    if (Program.SessionKey == null)
+                    {
+                        MessageBox.Show("Спочатку розблокуйте вкладку Паролі (PIN).");
+                        return;
+                    }
+                    var enc = CryptoService.EncryptAes(content, Program.SessionKey);
+                    note.Content = enc.cipherBase64;
+                    note.IvBase64 = enc.ivBase64;
+                }
+                else
+                {
+                    note.Content = content;
+                    note.IvBase64 = null;
+                }
+
+                CreatedOrUpdatedNote = note;
+                DialogResult = DialogResult.OK;
+                Close();
+            }
+            else
+            {
+                // Редагування
+                EditingNote.Title = title;
+                EditingNote.Type = type;
+                EditingNote.Color = color;
+                EditingNote.Tags = tags;
+                EditingNote.GroupId = groupId;
+                EditingNote.UpdatedAt = DateTime.Now;
+
+                if (type == "password")
+                {
+                    var isMasked = content.StartsWith("••") || content.StartsWith("(не вдалося");
+                    if (!isMasked && !string.IsNullOrWhiteSpace(content))
+                    {
+                        if (Program.SessionKey == null)
+                        {
+                            MessageBox.Show("Спочатку розблокуйте вкладку Паролі (PIN).");
+                            return;
+                        }
+                        var enc = CryptoService.EncryptAes(content, Program.SessionKey);
+                        EditingNote.Content = enc.cipherBase64;
+                        EditingNote.IvBase64 = enc.ivBase64;
+                    }
+                    // якщо залишили маску — не змінюємо шифр
+                }
+                else
+                {
+                    EditingNote.Content = content;
+                    EditingNote.IvBase64 = null;
+                }
+
+                CreatedOrUpdatedNote = EditingNote;
+                DialogResult = DialogResult.OK;
+                Close();
+            }
         }
     }
 }
